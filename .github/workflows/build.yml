@@ -78,6 +78,7 @@ jobs:
           mkdir -p MultiLinkServer.app/Contents/MacOS
           mkdir -p MultiLinkServer.app/Contents/Resources
           cp MultiLinkServer-universal MultiLinkServer.app/Contents/MacOS/MultiLinkServer
+          cp src-tauri/icons/icon.icns MultiLinkServer.app/Contents/Resources/icon.icns
           chmod +x MultiLinkServer.app/Contents/MacOS/MultiLinkServer
           cat > MultiLinkServer.app/Contents/Info.plist << 'PLISTEOF'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -100,13 +101,23 @@ jobs:
           </plist>
           PLISTEOF
 
+      - name: Install create-dmg
+        run: brew install create-dmg
+
       - name: Create DMG
         working-directory: ./link
         run: |
-          mkdir -p dmg-staging
-          cp -r MultiLinkServer.app dmg-staging/
-          ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "MultiLinkServer" -srcfolder dmg-staging -ov -format UDZO MultiLinkServer-universal.dmg
+          create-dmg \
+            --volname "MultiLinkServer" \
+            --volicon "MultiLinkServer.app/Contents/Resources/icon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "MultiLinkServer.app" 150 200 \
+            --hide-extension "MultiLinkServer.app" \
+            --app-drop-link 450 200 \
+            "MultiLinkServer-universal.dmg" \
+            "MultiLinkServer.app"
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
