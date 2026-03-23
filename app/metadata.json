@@ -1,5 +1,0 @@
-{
-  "name": "Glassmorphism Keyboard & Touchpad",
-  "description": "A high-end glassmorphism H5 application featuring a virtual keyboard and touchpad designed for landscape iPad use.",
-  "requestFramePermissions": ["camera"]
-}
