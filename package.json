@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "cordova-annotated-plugin-android": "^1.0.4"
+  }
+}

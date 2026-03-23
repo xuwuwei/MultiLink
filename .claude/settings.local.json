@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"exit:$?\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(~/.cargo/bin/cargo check:*)",
+      "Bash(cargo check:*)",
+      "Bash(~/.cargo/bin/cargo build:*)",
+      "Bash(cargo install:*)",
+      "Bash(~/.cargo/bin/cargo install:*)",
+      "Bash(~/.cargo/bin/cargo tauri:*)",
+      "Bash(~/.cargo/bin/cargo doc:*)",
+      "Bash(~/.cargo/bin/cargo metadata:*)",
+      "Bash(cargo build:*)",
+      "Bash(export PATH=\"$HOME/.cargo/bin:$PATH\")",
+      "Bash(kill 71145 70191 70101 70036 70010 70007)",
+      "Read(//Users/hf/.cargo/**)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/hf/Desktop/program/keyboardN/link/.git"
+    ]
+  }
+}

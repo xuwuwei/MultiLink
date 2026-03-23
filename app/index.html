@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Keyboard For Pad</title>
+    <script>
+      // Apply saved theme gradient before React renders — prevents safe-area flash
+      (function(){
+        var bg={
+          glass:'linear-gradient(180deg,#111116 0%,#0a0a0e 100%)',
+          retro:'linear-gradient(180deg,#d8d8d8 0%,#c8c8c8 100%)',
+          cyberpunk:'linear-gradient(180deg,#08080f 0%,#050505 100%)',
+          minimal:'linear-gradient(180deg,#fafafa 0%,#f0f0f0 100%)',
+          amoled:'#000000',
+          pink:'linear-gradient(180deg,#fff5f9 0%,#fce7f3 100%)'
+        };
+        var t=localStorage.getItem('theme')||'glass';
+        var c=bg[t]||bg.glass;
+        document.documentElement.style.background=c;
+        document.body&&(document.body.style.background='transparent');
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
+

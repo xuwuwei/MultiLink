@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*"
+             Name="MultiLinkServer"
+             Version="0.1.0"
+             Manufacturer="MultiLink"
+             Language="1033"
+             UpgradeCode="{A1234567-89AB-CDEF-0123-456789ABCDEF}">
+
+        <Package Description="MultiLinkServer - Wireless Keyboard and Touchpad Server"
+                 Comments="Turn your phone into a wireless keyboard and touchpad"
+                 Manufacturer="MultiLink"
+                 InstallerVersion="200"
+                 Compressed="yes"
+                 InstallScope="perMachine"
+                 Platform="x64"
+                 Languages="1033" />
+
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+        <Media Id="1" Cabinet="media1.cab" EmbedCab="yes" />
+
+        <!-- Directory structure -->
+        <Directory Id="TARGETDIR" Name="SourceDir">
+
+            <!-- Program Files -->
+            <Directory Id="ProgramFiles64Folder">
+                <Directory Id="INSTALLDIR" Name="MultiLinkServer">
+
+                    <!-- Main executable component -->
+                    <Component Id="MainExecutable" Guid="11111111-1111-1111-1111-111111111111">
+                        <File Id="MultiLinkServerEXE"
+                              Source="..\target\release\MultiLinkServer.exe"
+                              KeyPath="yes"
+                              Checksum="yes" />
+                    </Component>
+
+                    <!-- Auto-start registry entry -->
+                    <Component Id="AutoStartRegistry" Guid="22222222-2222-2222-2222-222222222222">
+                        <RegistryValue Root="HKLM"
+                                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                                       Name="MultiLinkServer"
+                                       Value="[INSTALLDIR]MultiLinkServer.exe"
+                                       Type="string"
+                                       KeyPath="yes" />
+                    </Component>
+
+                </Directory>
+            </Directory>
+
+            <!-- Desktop Folder -->
+            <Directory Id="DesktopFolder">
+                <Component Id="DesktopShortcutComp" Guid="33333333-3333-3333-3333-333333333333">
+                    <Shortcut Id="DesktopShortcut"
+                              Name="MultiLinkServer"
+                              Description="MultiLinkServer - Wireless Keyboard and Touchpad"
+                              Target="[#MultiLinkServerEXE]"
+                              WorkingDirectory="INSTALLDIR"
+                              IconIndex="0" />
+                    <RegistryValue Root="HKCU"
+                                   Key="Software\MultiLink\MultiLinkServer"
+                                   Name="DesktopShortcutInstalled"
+                                   Type="integer"
+                                   Value="1"
+                                   KeyPath="yes" />
+                </Component>
+            </Directory>
+
+            <!-- Start Menu -->
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="MultiLink">
+                    <Component Id="StartMenuShortcutComp" Guid="44444444-4444-4444-4444-444444444444">
+                        <Shortcut Id="StartMenuShortcut"
+                                  Name="MultiLinkServer"
+                                  Description="MultiLinkServer - Wireless Keyboard and Touchpad"
+                                  Target="[#MultiLinkServerEXE]"
+                                  WorkingDirectory="INSTALLDIR"
+                                  IconIndex="0" />
+                        <RemoveFolder Id="CleanUpApplicationProgramsFolder" On="uninstall" />
+                        <RegistryValue Root="HKCU"
+                                       Key="Software\MultiLink\MultiLinkServer"
+                                       Name="StartMenuShortcutInstalled"
+                                       Type="integer"
+                                       Value="1"
+                                       KeyPath="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+
+        </Directory>
+
+        <!-- Features -->
+        <Feature Id="ProductFeature" Title="MultiLinkServer" Level="1">
+            <ComponentRef Id="MainExecutable" />
+            <ComponentRef Id="AutoStartRegistry" />
+            <ComponentRef Id="DesktopShortcutComp" />
+            <ComponentRef Id="StartMenuShortcutComp" />
+        </Feature>
+
+        <!-- UI -->
+        <UIRef Id="WixUI_Minimal" />
+        <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+
+    </Product>
+</Wix>

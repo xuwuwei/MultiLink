@@ -1,0 +1,131 @@
+name: Build MultiLink Server
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install WiX Toolset
+        run: choco install wixtoolset
+
+      - name: Build Release
+        working-directory: ./link
+        run: cargo build --release
+
+      - name: Build MSI Installer
+        working-directory: ./link/wix
+        run: |
+          candle main.wxs -ext WixUIExtension
+          light main.wixobj -o MultiLinkServer.msi -ext WixUIExtension
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: MultiLinkServer-windows
+          path: link/wix/MultiLinkServer.msi
+
+      - name: Upload Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: MultiLinkServer-windows-exe
+          path: link/target/release/MultiLinkServer.exe
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.arch }}-apple-darwin
+
+      - name: Build Release (${{ matrix.arch }})
+        working-directory: ./link
+        run: cargo build --release --target ${{ matrix.arch }}-apple-darwin
+
+      - name: Create App Bundle
+        working-directory: ./link
+        run: |
+          mkdir -p MultiLinkServer.app/Contents/MacOS
+          mkdir -p MultiLinkServer.app/Contents/Resources
+          cp target/${{ matrix.arch }}-apple-darwin/release/MultiLinkServer MultiLinkServer.app/Contents/MacOS/
+          cat > MultiLinkServer.app/Contents/Info.plist << PLISTEOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>MultiLinkServer</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.multilink.server</string>
+              <key>CFBundleName</key>
+              <string>MultiLinkServer</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>0.1.0</string>
+              <key>LSUIElement</key>
+              <true/>
+          </dict>
+          </plist>
+          PLISTEOF
+          chmod +x MultiLinkServer.app/Contents/MacOS/MultiLinkServer
+
+      - name: Create DMG
+        working-directory: ./link
+        run: |
+          hdiutil create -volname "MultiLinkServer" -srcfolder MultiLinkServer.app -ov -format UDZO MultiLinkServer-${{ matrix.arch }}.dmg
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: MultiLinkServer-macos-${{ matrix.arch }}
+          path: link/MultiLinkServer-${{ matrix.arch }}.dmg
+
+      - name: Upload App
+        uses: actions/upload-artifact@v4
+        with:
+          name: MultiLinkServer-macos-${{ matrix.arch }}-app
+          path: link/MultiLinkServer.app
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            **/*.msi
+            **/*.dmg
+            **/*.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

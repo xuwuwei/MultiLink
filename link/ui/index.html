@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keyboard Server</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f0f2f5;
+            color: #1a1a1a;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #1d6fa4;
+            color: white;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header h1 { font-size: 15px; font-weight: 600; flex: 1; }
+
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #4cff91;
+            box-shadow: 0 0 6px #4cff91;
+            flex-shrink: 0;
+        }
+
+        .lang-btn {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 13px;
+            padding: 4px 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.15s;
+            flex-shrink: 0;
+        }
+        .lang-btn:hover { background: rgba(255,255,255,0.25); }
+        .lang-btn svg { width: 14px; height: 14px; }
+
+        /* Language dropdown */
+        .lang-dropdown {
+            position: fixed;
+            top: 48px;
+            right: 12px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            z-index: 100;
+            overflow: hidden;
+            display: none;
+            min-width: 180px;
+        }
+        .lang-dropdown.open { display: block; }
+        .lang-dropdown-header {
+            padding: 8px 12px 6px;
+            font-size: 10px;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .lang-list {
+            max-height: 280px;
+            overflow-y: auto;
+        }
+        .lang-item {
+            padding: 9px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.1s;
+        }
+        .lang-item:hover { background: #f5f7fa; }
+        .lang-item.active { background: #e8f0fe; color: #1d6fa4; font-weight: 500; }
+        .lang-item .lang-native { font-size: 13px; }
+        .lang-item .lang-check { font-size: 12px; color: #1d6fa4; }
+
+        .content {
+            flex: 1;
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+        }
+
+        .qr-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .qr-box {
+            width: 176px; height: 176px;
+            background: white;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        #qr-code { width: 160px; height: 160px; display: none; }
+        #qr-code.loaded { display: block; }
+        #qr-loading { color: #aaa; font-size: 13px; }
+
+        .qr-label { font-size: 12px; color: #777; }
+
+        .info-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .info-card {
+            background: white;
+            border-radius: 10px;
+            padding: 12px 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+
+        .info-card .label {
+            font-size: 10px;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }
+
+        .info-card .value-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .info-card .value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1d6fa4;
+        }
+
+        .info-card .value.small { font-size: 14px; }
+
+        .copy-btn {
+            background: #e8f0fe;
+            border: none;
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 12px;
+            color: #1d6fa4;
+            cursor: pointer;
+            transition: background 0.15s;
+            flex-shrink: 0;
+        }
+
+        .copy-btn:hover { background: #c8dafd; }
+        .copy-btn.copied { background: #d4f5e2; color: #1a7a45; }
+
+        .guide-card {
+            background: white;
+            border-radius: 10px;
+            padding: 12px 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            flex: 1;
+        }
+
+        .guide-card h3 { font-size: 12px; color: #888; margin-bottom: 8px; }
+
+        .guide-card ol {
+            padding-left: 16px;
+            font-size: 12px;
+            color: #555;
+            line-height: 2;
+        }
+
+        .footer {
+            padding: 8px;
+            text-align: center;
+            font-size: 11px;
+            color: #bbb;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: rgba(0,0,0,0.72);
+            color: white;
+            padding: 7px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            opacity: 0;
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none;
+        }
+
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="status-dot"></div>
+        <h1 data-i18n="serverRunning">Keyboard Server Running</h1>
+        <button class="lang-btn" id="lang-btn" onclick="toggleLangDropdown()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+            <span id="lang-label">EN</span>
+        </button>
+    </div>
+
+    <!-- Language dropdown -->
+    <div class="lang-dropdown" id="lang-dropdown">
+        <div class="lang-dropdown-header" data-i18n="language">Language</div>
+        <div class="lang-list" id="lang-list"></div>
+    </div>
+
+    <div class="content">
+        <div class="qr-section">
+            <div class="qr-box">
+                <span id="qr-loading" data-i18n="loading">Loading...</span>
+                <img id="qr-code" alt="QR Code">
+            </div>
+            <span class="qr-label" data-i18n="scanQr">Scan with phone to connect</span>
+        </div>
+
+        <div class="info-section">
+            <div class="info-card">
+                <div class="label" data-i18n="ipAddress">IP Address</div>
+                <div class="value-row">
+                    <span class="value" id="ip-address">...</span>
+                    <button class="copy-btn" data-i18n="copy" onclick="copyText('ip-address', this)">Copy</button>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <div class="label" data-i18n="tcpPort">TCP Port</div>
+                <div class="value-row">
+                    <span class="value" id="port">...</span>
+                    <button class="copy-btn" data-i18n="copy" onclick="copyText('port', this)">Copy</button>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <div class="label" data-i18n="fullAddress">Full Address</div>
+                <div class="value-row">
+                    <span class="value small" id="full-address">...</span>
+                    <button class="copy-btn" data-i18n="copy" onclick="copyText('full-address', this)">Copy</button>
+                </div>
+            </div>
+
+            <div class="guide-card">
+                <h3 data-i18n="instructions">Instructions</h3>
+                <ol>
+                    <li data-i18n="step1">Connect phone and PC to same Wi-Fi</li>
+                    <li data-i18n="step2">Scan QR code or enter address manually</li>
+                    <li data-i18n="step3">App stays in tray after closing window</li>
+                    <li data-i18n="step4">Right-click tray icon to reopen</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer" data-i18n="footer">Program continues running in system tray</div>
+
+    <script src="app.js"></script>
+</body>
+</html>

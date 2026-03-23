@@ -1,0 +1,47 @@
+# macOS
+.DS_Store
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build outputs
+dist/
+build/
+*.msi
+*.wixobj
+*.wixpdb
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Android
+*.apk
+*.aab
+app/android/app/build/
+
+# iOS
+app/ios/App/build/
+app/ios/App/Pods/
+*.xcworkspace
+
+# Temporary files
+*.tmp
+*.temp

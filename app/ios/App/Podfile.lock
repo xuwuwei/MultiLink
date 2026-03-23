@@ -1,0 +1,16 @@
+PODS:
+  - RevenueCat (4.44.2)
+
+DEPENDENCIES:
+  - RevenueCat (~> 4.0)
+
+SPEC REPOS:
+  trunk:
+    - RevenueCat
+
+SPEC CHECKSUMS:
+  RevenueCat: 542249f50cf033ada4a9893f2a26e96e22a54ae3
+
+PODFILE CHECKSUM: ceb9c5b8e883d48159e1e0dd00f53968aedbed7b
+
+COCOAPODS: 1.16.2

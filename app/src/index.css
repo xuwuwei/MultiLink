@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+}
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-blur: 12px;
+}
+
+html {
+  font-size: 16px; /* Base for rem */
+  -webkit-text-size-adjust: 100%;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* Gradient fills safe-area insets so top/bottom strips blend with main content */
+  background: linear-gradient(180deg, #111116 0%, #0a0a0e 100%);
+  transition: background 0.5s ease;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent; /* inherits gradient from html */
+  color: #ffffff;
+  font-family: var(--font-sans);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none; /* Disable elastic scroll */
+  position: fixed; /* Prevent scrolling on iOS */
+}
+
+/* Prevent zoom and default touch behaviors on buttons and interactive elements */
+button, a, [role="button"], .key-element {
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Allow vertical scroll even when touching buttons inside modal */
+.modal-content button,
+.modal-content a,
+.modal-content [role="button"],
+.modal-content input[type="range"] {
+  touch-action: pan-y;
+}
+
+/* Custom Scrollbar for any scrollable areas */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.glass-effect {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.key-active {
+  background: rgba(255, 255, 255, 0.3) !important;
+  transform: scale(0.95);
+  transition: all 0.1s ease;
+}
+
+/* Split-flap / flip-board counter animation */
+@keyframes flipTopHalf {
+  from { transform: rotateX(0deg); }
+  to   { transform: rotateX(-90deg); }
+}
+@keyframes flipBottomHalf {
+  from { transform: rotateX(90deg); }
+  to   { transform: rotateX(0deg); }
+}

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="#1a1a2e"/>
+
+  <!-- Keyboard base -->
+  <rect x="48" y="100" width="160" height="100" rx="12" fill="#3d3d5c" stroke="#6a6a9a" stroke-width="4"/>
+
+  <!-- Keyboard keys (top row) - brighter -->
+  <rect x="60" y="112" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="82" y="112" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="104" y="112" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="126" y="112" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="148" y="112" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="170" y="112" width="24" height="14" rx="2" fill="#8a8ab5"/>
+
+  <!-- Keyboard keys (middle row) - brighter -->
+  <rect x="60" y="132" width="24" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="88" y="132" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="110" y="132" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="132" y="132" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="154" y="132" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="176" y="132" width="18" height="14" rx="2" fill="#8a8ab5"/>
+
+  <!-- Keyboard keys (bottom row - spacebar) - brighter -->
+  <rect x="60" y="152" width="18" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="82" y="152" width="92" height="14" rx="2" fill="#8a8ab5"/>
+  <rect x="178" y="152" width="16" height="14" rx="2" fill="#8a8ab5"/>
+
+  <!-- Touchpad/mouse area - brighter -->
+  <rect x="100" y="172" width="56" height="20" rx="4" fill="#5a5a8a"/>
+
+  <!-- Wireless signal waves (top right) -->
+  <path d="M180 60 Q200 40 220 60" stroke="#10b981" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <path d="M170 50 Q200 20 230 50" stroke="#10b981" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.7"/>
+  <path d="M160 40 Q200 0 240 40" stroke="#10b981" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.5"/>
+
+  <!-- Small dot indicating connection status -->
+  <circle cx="200" cy="75" r="6" fill="#10b981"/>
+</svg>
