@@ -48,28 +48,38 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.arch }}-apple-darwin
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
 
-      - name: Build Release (${{ matrix.arch }})
+      - name: Build x86_64
         working-directory: ./link
-        run: cargo build --release --target ${{ matrix.arch }}-apple-darwin
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Build aarch64
+        working-directory: ./link
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Create Universal Binary
+        working-directory: ./link
+        run: |
+          lipo -create \
+            target/x86_64-apple-darwin/release/MultiLinkServer \
+            target/aarch64-apple-darwin/release/MultiLinkServer \
+            -output MultiLinkServer-universal
 
       - name: Create App Bundle
         working-directory: ./link
         run: |
           mkdir -p MultiLinkServer.app/Contents/MacOS
           mkdir -p MultiLinkServer.app/Contents/Resources
-          cp target/${{ matrix.arch }}-apple-darwin/release/MultiLinkServer MultiLinkServer.app/Contents/MacOS/
-          cat > MultiLinkServer.app/Contents/Info.plist << PLISTEOF
+          cp MultiLinkServer-universal MultiLinkServer.app/Contents/MacOS/MultiLinkServer
+          chmod +x MultiLinkServer.app/Contents/MacOS/MultiLinkServer
+          cat > MultiLinkServer.app/Contents/Info.plist << 'PLISTEOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -89,27 +99,48 @@ jobs:
           </dict>
           </plist>
           PLISTEOF
-          chmod +x MultiLinkServer.app/Contents/MacOS/MultiLinkServer
 
       - name: Create DMG
         working-directory: ./link
         run: |
-          hdiutil create -volname "MultiLinkServer" -srcfolder MultiLinkServer.app -ov -format UDZO MultiLinkServer-${{ matrix.arch }}.dmg
+          hdiutil create -volname "MultiLinkServer" -srcfolder MultiLinkServer.app -ov -format UDZO MultiLinkServer-universal.dmg
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: MultiLinkServer-macos-${{ matrix.arch }}
-          path: link/MultiLinkServer-${{ matrix.arch }}.dmg
+          name: MultiLinkServer-macos-universal
+          path: link/MultiLinkServer-universal.dmg
 
-      - name: Upload App
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev
+
+      - name: Build Release
+        working-directory: ./link
+        run: cargo build --release
+
+      - name: Package tar.gz
+        working-directory: ./link
+        run: |
+          mkdir -p dist
+          cp target/release/MultiLinkServer dist/
+          tar -czf MultiLinkServer-linux-x86_64.tar.gz -C dist MultiLinkServer
+
+      - name: Upload Linux binary
         uses: actions/upload-artifact@v4
         with:
-          name: MultiLinkServer-macos-${{ matrix.arch }}-app
-          path: link/MultiLinkServer.app
+          name: MultiLinkServer-linux-x86_64
+          path: link/MultiLinkServer-linux-x86_64.tar.gz
 
   release:
-    needs: [build-windows, build-macos]
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -125,6 +156,7 @@ jobs:
             **/*.msi
             **/*.dmg
             **/*.exe
+            **/*.tar.gz
           draft: false
           prerelease: false
         env:
