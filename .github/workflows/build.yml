@@ -124,11 +124,8 @@ jobs:
           apt-get update -qq
           apt-get install -y ca-certificates
           # Step 2: switch to June 2022 snapshot (webkit2gtk 2.36.x, has set_enable_webgl)
-          cat > /etc/apt/sources.list << 'EOF'
-deb https://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal main restricted universe multiverse
-deb https://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal-updates main restricted universe multiverse
-deb https://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal-security main restricted universe multiverse
-EOF
+          SNAP="https://snapshot.ubuntu.com/ubuntu/20220601T000000Z"
+          printf 'deb %s focal main restricted universe multiverse\ndeb %s focal-updates main restricted universe multiverse\ndeb %s focal-security main restricted universe multiverse\n' "$SNAP" "$SNAP" "$SNAP" > /etc/apt/sources.list
           apt-get -o Acquire::Check-Valid-Until=false update
           apt-get install -y curl build-essential \
             libx11-dev libxtst-dev \
