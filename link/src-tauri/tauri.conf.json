@@ -3,10 +3,7 @@
   "version": "0.1.0",
   "identifier": "com.multilinkserver.app",
   "build": {
-    "frontendDist": "../ui",
-    "devUrl": "../ui",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "frontendDist": "../ui"
   },
   "app": {
     "withGlobalTauri": true,
