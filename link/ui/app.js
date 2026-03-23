@@ -366,7 +366,7 @@ function applyLang(lang) {
   localStorage.setItem('link_lang', lang);
 
   // Notify Rust to update tray
-  const invoke = window.__TAURI__?.invoke;
+  const invoke = window.__TAURI__?.core?.invoke ?? window.__TAURI__?.invoke;
   if (invoke) invoke('set_language', { lang }).catch(() => {});
 }
 
