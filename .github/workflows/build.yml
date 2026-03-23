@@ -120,6 +120,9 @@ jobs:
       - name: Install dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
+          # Use only base focal repo to pin webkit2gtk at 2.28.x
+          # focal-security/updates upgraded it to 2.40+ which removed set_enable_webgl
+          echo "deb http://archive.ubuntu.com/ubuntu focal main restricted universe multiverse" > /etc/apt/sources.list
           apt-get update
           apt-get install -y curl build-essential \
             libx11-dev libxtst-dev \
