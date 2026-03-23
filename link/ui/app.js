@@ -366,7 +366,7 @@ function applyLang(lang) {
   localStorage.setItem('link_lang', lang);
 
   // Notify Rust to update tray
-  const invoke = window.__TAURI__?.core?.invoke ?? window.__TAURI__?.invoke;
+  const invoke = getInvoke();
   if (invoke) invoke('set_language', { lang }).catch(() => {});
 }
 
@@ -407,7 +407,9 @@ document.addEventListener('click', (e) => {
 });
 
 // ── App data & display ─────────────────────────────────────────────────────
-const invoke = window.__TAURI__?.invoke;
+function getInvoke() {
+  return window.__TAURI__?.core?.invoke ?? window.__TAURI__?.invoke ?? null;
+}
 let appData = { ip: '', port: 0 };
 
 async function init() {
@@ -423,6 +425,7 @@ async function init() {
   }
 
   try {
+    const invoke = getInvoke();
     if (invoke) {
       const info = await invoke('get_connection_info');
       appData.ip = info.ip;
