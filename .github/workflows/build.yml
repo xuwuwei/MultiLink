@@ -120,13 +120,15 @@ jobs:
       - name: Install dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
-          # Pin to a June 2022 snapshot: webkit2gtk is 2.36.x which still has
-          # set_enable_webgl (removed in 2.40+, backported to focal-security ~late 2022)
+          # Step 1: install ca-certificates from default sources first
+          apt-get update -qq
+          apt-get install -y ca-certificates
+          # Step 2: switch to June 2022 snapshot (webkit2gtk 2.36.x, has set_enable_webgl)
           cat > /etc/apt/sources.list << 'EOF'
-          deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal main restricted universe multiverse
-          deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal-updates main restricted universe multiverse
-          deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal-security main restricted universe multiverse
-          EOF
+deb https://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal main restricted universe multiverse
+deb https://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal-updates main restricted universe multiverse
+deb https://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal-security main restricted universe multiverse
+EOF
           apt-get -o Acquire::Check-Valid-Until=false update
           apt-get install -y curl build-essential \
             libx11-dev libxtst-dev \
