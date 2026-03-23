@@ -113,25 +113,18 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-22.04
-    container: ubuntu:20.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          export DEBIAN_FRONTEND=noninteractive
-          # Step 1: install ca-certificates from default sources first
-          apt-get update -qq
-          apt-get install -y ca-certificates
-          # Step 2: switch to June 2022 snapshot (webkit2gtk 2.36.x, has set_enable_webgl)
-          SNAP="https://snapshot.ubuntu.com/ubuntu/20220601T000000Z"
-          printf 'deb %s focal main restricted universe multiverse\ndeb %s focal-updates main restricted universe multiverse\ndeb %s focal-security main restricted universe multiverse\n' "$SNAP" "$SNAP" "$SNAP" > /etc/apt/sources.list
-          apt-get -o Acquire::Check-Valid-Until=false update
-          apt-get install -y curl build-essential \
+          sudo apt-get update
+          sudo apt-get install -y \
             libx11-dev libxtst-dev \
             libglib2.0-dev libgtk-3-dev \
             libayatana-appindicator3-dev \
-            libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
             pkg-config
 
       - name: Install Rust
