@@ -120,10 +120,14 @@ jobs:
       - name: Install dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
-          # Use only base focal repo to pin webkit2gtk at 2.28.x
-          # focal-security/updates upgraded it to 2.40+ which removed set_enable_webgl
-          echo "deb http://archive.ubuntu.com/ubuntu focal main restricted universe multiverse" > /etc/apt/sources.list
-          apt-get update
+          # Pin to a June 2022 snapshot: webkit2gtk is 2.36.x which still has
+          # set_enable_webgl (removed in 2.40+, backported to focal-security ~late 2022)
+          cat > /etc/apt/sources.list << 'EOF'
+          deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal main restricted universe multiverse
+          deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal-updates main restricted universe multiverse
+          deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20220601T000000Z focal-security main restricted universe multiverse
+          EOF
+          apt-get -o Acquire::Check-Valid-Until=false update
           apt-get install -y curl build-essential \
             libx11-dev libxtst-dev \
             libglib2.0-dev libgtk-3-dev \
