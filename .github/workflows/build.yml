@@ -95,11 +95,17 @@ jobs:
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
               <string>0.1.0</string>
+              <key>CFBundleIconFile</key>
+              <string>icon</string>
               <key>LSUIElement</key>
               <true/>
           </dict>
           </plist>
           PLISTEOF
+
+      - name: Sign App Bundle
+        working-directory: ./link
+        run: codesign --force --deep --sign - MultiLinkServer.app
 
       - name: Install create-dmg
         run: brew install create-dmg
