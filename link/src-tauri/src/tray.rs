@@ -1,11 +1,20 @@
 use tauri::{
-    menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager, WebviewWindow,
 };
 use crate::i18n::tray_i18n;
 
-pub fn create_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
+/// Stored handles so we can update item text without reading back from the tray.
+pub struct TrayItems {
+    pub show:       MenuItem<tauri::Wry>,
+    pub auto_start: MenuItem<tauri::Wry>,
+    pub feedback:   MenuItem<tauri::Wry>,
+    pub help:       MenuItem<tauri::Wry>,
+    pub quit:       MenuItem<tauri::Wry>,
+}
+
+pub fn create_tray(app: &AppHandle, lang: &str) -> tauri::Result<TrayItems> {
     let i = tray_i18n(lang);
 
     let show       = MenuItem::with_id(app, "show",       i.show,       true, None::<&str>)?;
@@ -35,42 +44,38 @@ pub fn create_tray(app: &AppHandle, lang: &str) -> tauri::Result<()> {
                 button_state: MouseButtonState::Up,
                 ..
             } => {
-                let app = tray.app_handle();
-                if let Some(w) = app.get_webview_window("main") {
+                if let Some(w) = tray.app_handle().get_webview_window("main") {
                     toggle_window(&w);
                 }
             }
-            TrayIconEvent::DoubleClick {
-                button: MouseButton::Left,
-                ..
-            } => {
-                let app = tray.app_handle();
-                if let Some(w) = app.get_webview_window("main") {
+            TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => {
+                if let Some(w) = tray.app_handle().get_webview_window("main") {
                     show_window(&w);
                     let _ = w.set_focus();
                 }
             }
             _ => {}
         })
-        .on_menu_event(|app, event| {
-            handle_menu_event(app, event.id().as_ref());
-        })
+        .on_menu_event(|app, event| handle_menu_event(app, event.id().as_ref()))
         .build(app)?;
 
-    Ok(())
+    Ok(TrayItems {
+        show:       show.clone(),
+        auto_start: auto_start.clone(),
+        feedback:   feedback.clone(),
+        help:       help.clone(),
+        quit:       quit.clone(),
+    })
 }
 
 fn handle_menu_event(app: &AppHandle, id: &str) {
     match id {
         "show" => {
-            if let Some(w) = app.get_webview_window("main") {
-                show_window(&w);
-            }
+            if let Some(w) = app.get_webview_window("main") { show_window(&w); }
         }
         "auto_start" => {
             let mgr = crate::auto_start::AutoStartManager::new("KeyboardServer");
-            let current = mgr.is_enabled().unwrap_or(false);
-            let new_state = !current;
+            let new_state = !mgr.is_enabled().unwrap_or(false);
             if let Err(e) = mgr.set_enabled(new_state) {
                 eprintln!("设置开机启动失败: {}", e);
             }
@@ -103,18 +108,6 @@ pub fn toggle_window(w: &WebviewWindow) {
     if w.is_visible().unwrap_or(false) { hide_window(w); } else { show_window(w); }
 }
 
-fn tray_menu(app: &AppHandle) -> Option<Menu<tauri::Wry>> {
-    app.tray_by_id("tray")?.menu()
-}
-
-fn set_item_text(app: &AppHandle, id: &str, text: &str) {
-    if let Some(menu) = tray_menu(app) {
-        if let Some(MenuItemKind::MenuItem(item)) = menu.get(id) {
-            let _ = item.set_text(text);
-        }
-    }
-}
-
 pub fn update_auto_start_menu(app: &AppHandle, enabled: bool) {
     let lang = app
         .try_state::<crate::AppState>()
@@ -122,18 +115,21 @@ pub fn update_auto_start_menu(app: &AppHandle, enabled: bool) {
         .unwrap_or_else(|| "en".to_string());
     let i = tray_i18n(&lang);
     let label = if enabled { i.auto_start_on } else { i.auto_start };
-    set_item_text(app, "auto_start", label);
+    if let Some(items) = app.try_state::<TrayItems>() {
+        let _ = items.auto_start.set_text(label);
+    }
 }
 
 pub fn update_tray_lang(app: &AppHandle, lang: &str) {
     let i = tray_i18n(lang);
-    set_item_text(app, "show",     i.show);
-    set_item_text(app, "feedback", i.feedback);
-    set_item_text(app, "help",     i.help);
-    set_item_text(app, "quit",     i.quit);
-
-    let enabled = crate::auto_start::AutoStartManager::new("KeyboardServer")
-        .is_enabled().unwrap_or(false);
-    let auto_label = if enabled { i.auto_start_on } else { i.auto_start };
-    set_item_text(app, "auto_start", auto_label);
+    if let Some(items) = app.try_state::<TrayItems>() {
+        let _ = items.show.set_text(i.show);
+        let _ = items.feedback.set_text(i.feedback);
+        let _ = items.help.set_text(i.help);
+        let _ = items.quit.set_text(i.quit);
+        let enabled = crate::auto_start::AutoStartManager::new("KeyboardServer")
+            .is_enabled().unwrap_or(false);
+        let auto_label = if enabled { i.auto_start_on } else { i.auto_start };
+        let _ = items.auto_start.set_text(auto_label);
+    }
 }

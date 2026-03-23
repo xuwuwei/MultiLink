@@ -113,8 +113,8 @@ fn main() {
             lang: Mutex::new(initial_lang.clone()),
         })
         .setup(move |app| {
-            // Create system tray
-            tray::create_tray(app.handle(), &initial_lang)?;
+            let tray_items = tray::create_tray(app.handle(), &initial_lang)?;
+            app.manage(tray_items);
 
             let window = app.get_webview_window("main").unwrap();
             let _ = window.eval(&format!(
