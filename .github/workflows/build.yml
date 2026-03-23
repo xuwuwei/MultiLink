@@ -103,7 +103,10 @@ jobs:
       - name: Create DMG
         working-directory: ./link
         run: |
-          hdiutil create -volname "MultiLinkServer" -srcfolder MultiLinkServer.app -ov -format UDZO MultiLinkServer-universal.dmg
+          mkdir -p dmg-staging
+          cp -r MultiLinkServer.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "MultiLinkServer" -srcfolder dmg-staging -ov -format UDZO MultiLinkServer-universal.dmg
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
