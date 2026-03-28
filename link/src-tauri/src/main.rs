@@ -94,15 +94,15 @@ fn main() {
     let computer_name = get_computer_name();
     let initial_lang = i18n::detect_system_lang();
 
-    // ── TCP server ────────────────────────────────────────────
-    let tcp_port = port;
+    // ── UDP server ────────────────────────────────────────────
+    let udp_port = port;
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-        rt.block_on(async move { run_tcp_server(tcp_port).await; });
+        rt.block_on(async move { run_udp_server(udp_port).await; });
     });
 
     // ── mDNS ────────────────────────────────────────────────
-    let mut mdns_manager = MdnsManager::new("_multilink._tcp.local.", &computer_name, port, Some(ip.clone()));
+    let mut mdns_manager = MdnsManager::new("_multilink._udp.local.", &computer_name, port, Some(ip.clone()));
     let _ = mdns_manager.start();
 
     tauri::Builder::default()
@@ -169,19 +169,19 @@ fn main() {
         });
 }
 
-async fn run_tcp_server(port: u16) {
+async fn run_udp_server(port: u16) {
     let mut driver_manager = DriverManager::new();
     if !driver_manager.initialize() {
         eprintln!("Failed to initialize driver manager");
         return;
     }
 
-    let mut network_manager = NetworkManager::new(0, port);
-    if let Err(e) = network_manager.init_tcp().await {
-        eprintln!("TCP init failed: {}", e);
+    let mut network_manager = NetworkManager::new(port);
+    if let Err(e) = network_manager.init_udp().await {
+        eprintln!("UDP init failed: {}", e);
         return;
     }
-    network_manager.start_tcp_listener().await;
+    network_manager.start_udp_listener().await;
 
     let mut network_receiver = network_manager.get_event_receiver();
     while let Some(msg) = network_receiver.recv().await {
@@ -214,6 +214,10 @@ async fn run_tcp_server(port: u16) {
                 }
             }
             KeyboardEvent::MouseDoubleClick(mask) => { driver_manager.send_mouse_double_click(*mask); }
+            KeyboardEvent::Heartbeat => {
+                // 心跳已在 network.rs 中回复，这里仅记录
+                // 可用于统计客户端连接状态
+            }
         }
     }
 }
