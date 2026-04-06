@@ -24,7 +24,7 @@ chrono = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-winapi = { version = "0.3", features = ["winsock2", "ws2def", "ws2tcpip", "winuser", "basetsd", "minwindef", "windef"] }
+winapi = { version = "0.3", features = ["winsock2", "ws2def", "ws2tcpip", "winuser", "basetsd", "minwindef", "windef", "iptypes", "iphlpapi"] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 libc = "0.2"
