@@ -263,8 +263,54 @@ fn get_network_interfaces_macos() -> Option<Vec<(String, std::net::IpAddr)>> {
 
 #[cfg(target_os = "linux")]
 fn get_network_interfaces_linux() -> Option<Vec<(String, std::net::IpAddr)>> {
-    // Same implementation as macos for Linux
-    get_network_interfaces_macos()
+    // Linux implementation using /proc/net/route
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::net::IpAddr;
+    use std::process::Command;
+
+    let mut result = Vec::new();
+
+    // Get default gateway interface from /proc/net/route
+    let file = File::open("/proc/net/route").ok()?;
+    let reader = BufReader::new(file);
+
+    for line in reader.lines().skip(1) { // Skip header
+        if let Ok(line) = line {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 3 {
+                let iface = parts[0].to_string();
+                let dest = parts[1];
+                // Check if this is the default route (destination 00000000)
+                if dest == "00000000" {
+                    // Get IP address for this interface using ip command
+                    if let Ok(output) = Command::new("ip")
+                        .args(&["addr", "show", &iface])
+                        .output() {
+                        let output_str = String::from_utf8_lossy(&output.stdout);
+                        for line in output_str.lines() {
+                            if line.contains("inet ") && !line.contains("inet6") {
+                                if let Some(ip_str) = line.split_whitespace().nth(1) {
+                                    if let Some(ip) = ip_str.split('/').next() {
+                                        if let Ok(ip_addr) = ip.parse::<std::net::IpAddr>() {
+                                            result.push((iface.clone(), ip_addr));
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 fn get_computer_name() -> String {
