@@ -3,7 +3,6 @@ use tokio::sync::mpsc;
 use std::time::Duration;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use chrono::Local;
 
 // 键盘事件类型
 #[derive(Debug, Clone)]
@@ -12,7 +11,7 @@ pub enum KeyboardEvent {
     KeyUp(u8),             // 按键释放
     KeyCombo(Vec<u8>),     // 组合键
     Text(String),          // 文本输入
-    MouseMove(i32, i32),   // 鼠标移动
+    MouseMove(f64, f64),   // 鼠标移动
     MouseButton(u8, bool), // 鼠标按键：掩码, 按下/释放
     MouseScroll(i32),      // 鼠标滚轮
     ResetState,            // 释放所有修饰键
@@ -51,8 +50,9 @@ fn parse_message(s: &str, addr: SocketAddr) -> Option<NetworkMessage> {
             KeyboardEvent::KeyUp(u8::from_str_radix(&s[1..3], 16).ok()?)
         }
         b'M' if b.len() >= 5 => {
-            let x = u8::from_str_radix(&s[1..3], 16).ok()? as i8 as i32;
-            let y = u8::from_str_radix(&s[3..5], 16).ok()? as i8 as i32;
+            let x = u8::from_str_radix(&s[1..3], 16).ok()? as i8 as f64;
+            let y = u8::from_str_radix(&s[3..5], 16).ok()? as i8 as f64;
+            //println!("[Network] Parsed MouseMove: x={}, y={} from {}", x, y, s);
             KeyboardEvent::MouseMove(x, y)
         }
         b'B' if b.len() >= 4 => {
@@ -101,7 +101,7 @@ impl NetworkManager {
 
     pub async fn init_udp(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let socket = UdpSocket::bind(format!("0.0.0.0:{}", self.udp_port)).await?;
-        println!("[UDP] Bound to port {}", self.udp_port);
+       // println!("[UDP] Bound to port {}", self.udp_port);
         self.udp_socket = Some(Arc::new(socket));
         Ok(())
     }
@@ -126,14 +126,14 @@ impl NetworkManager {
                         guard.clone()
                     };
 
-                    eprintln!("[Heartbeat] Tick - {} clients in list", clients_list.len());
+                    //eprintln!("[Heartbeat] Tick - {} clients in list", clients_list.len());
 
                     for addr in clients_list {
                         let heartbeat = b"H";
                         if let Err(e) = socket_for_heartbeat.send_to(heartbeat, addr).await {
-                            eprintln!("[Heartbeat] Failed to send heartbeat to {} at {}: {}", addr, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), e);
+                            //eprintln!("[Heartbeat] Failed to send heartbeat to {} at {}: {}", addr, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), e);
                         } else {
-                            eprintln!("[Heartbeat] Sent to {} at {}", addr, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+                            //eprintln!("[Heartbeat] Sent to {} at {}", addr, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
                         }
                     }
                 }
@@ -148,9 +148,9 @@ impl NetworkManager {
                         Ok((n, addr)) => {
                             let s = std::str::from_utf8(&buf[..n]).unwrap_or("").trim();
                             if !s.is_empty() {
-                                // 检查是否是心跳包
-                                if s == "H" {
-                                    println!("[UDP] Heartbeat received from {}", addr);
+                                // 检查是否是心跳包 (H 或 H<number>)
+                                if s.starts_with("H") {
+                                    //println!("[UDP] Heartbeat received from {}: {}", addr, s);
                                     
                                     // 添加客户端到已知列表（如果是新客户端）
                                     // 同一个 IP 只保留最后一个客户端，替换之前的
@@ -168,20 +168,34 @@ impl NetworkManager {
                                             for old_client in same_ip_clients {
                                                 let index = clients_guard.iter().position(|c| c == &old_client).unwrap();
                                                 clients_guard.remove(index);
-                                                println!("[UDP] Replaced old client {} with new client {}", old_client, addr);
+                                                //println!("[UDP] Replaced old client {} with new client {}", old_client, addr);
                                             }
                                             
                                             // 添加新客户端
                                             clients_guard.push(addr);
-                                            println!("[UDP] New client registered: {}", addr);
+                                            //println!("[UDP] New client registered: {}", addr);
                                         }
                                     }
                                     
-                                    // 回复心跳
-                                    let heartbeat_resp = b"H";
-                                    if let Err(e) = socket.send_to(heartbeat_resp, addr).await {
+                                    // 处理心跳响应：如果是 H<number>，返回 H<number+1>
+                                    let heartbeat_resp = if s.len() > 1 {
+                                        // Parse the number after H
+                                        if let Ok(num) = s[1..].parse::<i32>() {
+                                            let resp_num = num + 1;
+                                            format!("H{}", resp_num)
+                                        } else {
+                                            "H".to_string()
+                                        }
+                                    } else {
+                                        "H".to_string()
+                                    };
+                                    
+                                    if let Err(e) = socket.send_to(heartbeat_resp.as_bytes(), addr).await {
                                         eprintln!("[UDP] Failed to send heartbeat response to {}: {}", addr, e);
+                                    } else {
+                                        //println!("[UDP] Heartbeat response sent to {}: {}", addr, heartbeat_resp);
                                     }
+                                    
                                     // 也发送给事件处理器记录
                                     if let Some(msg) = parse_message(s, addr) {
                                         if sender.send(msg).await.is_err() { break; }
@@ -200,7 +214,7 @@ impl NetworkManager {
                     }
                 }
             });
-            println!("[UDP] Listener started on port {}", self.udp_port);
+            //println!("[UDP] Listener started on port {}", self.udp_port);
         }
     }
 

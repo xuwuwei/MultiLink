@@ -1,5 +1,3 @@
-use std::fmt;
-
 // 标准键盘 HID 描述符
 pub const KEYBOARD_HID_DESCRIPTOR: &[u8] = &[
     0x05, 0x01, // Usage Page (Generic Desktop)

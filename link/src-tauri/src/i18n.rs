@@ -23,7 +23,7 @@ pub fn tray_i18n(lang: &str) -> TrayI18n {
             auto_start: "開機啟動",
             auto_start_on: "開機啟動 ✓",
             feedback: "回饋",
-            help: "說明",
+            help: "幫助",
             quit: "退出",
         },
         "ja" => TrayI18n {
@@ -79,7 +79,7 @@ pub fn tray_i18n(lang: &str) -> TrayI18n {
             auto_start: "Автозапуск",
             auto_start_on: "Автозапуск ✓",
             feedback: "Обратная связь",
-            help: "Справка",
+            help: "Помощь",
             quit: "Выход",
         },
         "hi" => TrayI18n {

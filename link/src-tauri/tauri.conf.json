@@ -1,7 +1,7 @@
 {
   "productName": "MultiLinkServer",
   "version": "0.1.0",
-  "identifier": "com.multilinkserver.app",
+  "identifier": "com.xumingxun.multilink.server",
   "build": {
     "frontendDist": "../ui"
   },
@@ -35,7 +35,7 @@
       "exceptionDomain": "",
       "frameworks": [],
       "providerShortName": null,
-      "signingIdentity": null
+      "signingIdentity": "Developer ID Application: hefen zhao (9HBAJ6NGZM)"
     },
     "windows": {
       "certificateThumbprint": null,

@@ -22,7 +22,7 @@ use crate::port::find_available_port;
 use crate::qr::generate_qr_data_url;
 use crate::auto_start::AutoStartManager;
 #[cfg(target_os = "macos")]
-use crate::driver::{request_accessibility_if_needed, is_accessibility_trusted};
+use crate::driver::is_accessibility_trusted;
 use crate::driver::DriverManager;
 use crate::network::NetworkManager;
 use tokio::time::Duration;
@@ -36,6 +36,13 @@ pub struct AppState {
 
 fn get_local_ip() -> Option<String> {
     use std::net::UdpSocket;
+    
+    // Try to get the best IP using scoring algorithm
+    if let Some(best_ip) = find_best_local_ip() {
+        return Some(best_ip);
+    }
+    
+    // Fallback to original method
     if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
         if let Ok(_) = socket.connect("8.8.8.8:80") {
             if let Ok(addr) = socket.local_addr() {
@@ -44,6 +51,220 @@ fn get_local_ip() -> Option<String> {
         }
     }
     None
+}
+
+/// Find the best local IP address using a scoring algorithm
+fn find_best_local_ip() -> Option<String> {
+    use std::net::IpAddr;
+    
+    #[cfg(target_os = "windows")]
+    let interfaces = get_network_interfaces_windows()?;
+    
+    #[cfg(target_os = "macos")]
+    let interfaces = get_network_interfaces_macos()?;
+    
+    #[cfg(target_os = "linux")]
+    let interfaces = get_network_interfaces_linux()?;
+    
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    return None;
+    
+    let mut candidates: Vec<(String, i32, String)> = Vec::new();
+    
+    for (dev_name, ip) in interfaces {
+        // Only consider IPv4 addresses
+        let IpAddr::V4(ipv4) = ip else { continue };
+        
+        // Skip loopback addresses
+        if ipv4.is_loopback() {
+            continue;
+        }
+        
+        let ip_str = ip.to_string();
+        let mut score = 0;
+        
+        // 2. Score private network ranges
+        let octets = ipv4.octets();
+        if octets[0] == 192 && octets[1] == 168 {
+            score += 10; // 192.168.x.x
+        } else if octets[0] == 10 {
+            score += 10; // 10.x.x.x
+        } else if octets[0] == 172 && (16..=31).contains(&octets[1]) {
+            score += 10; // 172.16-31.x.x
+        }
+        
+        // 3. Penalize virtual interfaces
+        let dev_lower = dev_name.to_lowercase();
+        if dev_lower.contains("virtual") 
+            || dev_lower.contains("vbox")
+            || dev_lower.contains("docker")
+            || dev_lower.contains("veth")
+            || dev_lower.contains("tap")
+            || dev_lower.contains("vpn")
+            || dev_lower.contains("tailscale")
+            || dev_lower.contains("zerotier") {
+            score -= 100;
+        }
+        
+        // 4. Prefer wireless and physical ethernet
+        if dev_lower.contains("wlan")
+            || dev_lower.contains("wi-fi")
+            || dev_lower.contains("wifi")
+            || dev_lower.contains("ethernet")
+            || dev_lower.contains("en0")
+            || dev_lower.contains("eth0") {
+            score += 20;
+        }
+        
+        // 5. Exclude auto-config addresses (169.254.x.x)
+        if ip_str.starts_with("169.254") {
+            score -= 150;
+        }
+        
+        candidates.push((ip_str, score, dev_name));
+    }
+    
+    // Sort by score descending
+    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    
+    // Return the highest scoring IP
+    candidates.first().map(|(ip, score, name)| {
+        println!("[IP] Selected best local IP: {} (score: {}, interface: {})", ip, score, name);
+        ip.clone()
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn get_network_interfaces_windows() -> Option<Vec<(String, std::net::IpAddr)>> {
+    use std::net::IpAddr;
+    use winapi::shared::ws2def::{AF_UNSPEC, SOCKADDR_IN};
+    use winapi::um::iptypes::{IP_ADAPTER_ADDRESSES, GAA_FLAG_INCLUDE_PREFIX};
+    use winapi::um::iphlpapi::GetAdaptersAddresses;
+    
+    let mut result = Vec::new();
+    
+    unsafe {
+        let mut buffer_size = 0u32;
+        
+        // First call to get buffer size
+        let _ = GetAdaptersAddresses(
+            AF_UNSPEC as u32,
+            GAA_FLAG_INCLUDE_PREFIX,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut buffer_size,
+        );
+        
+        if buffer_size == 0 {
+            return None;
+        }
+        
+        let mut buffer = vec![0u8; buffer_size as usize];
+        let adapter_addresses = buffer.as_mut_ptr() as *mut IP_ADAPTER_ADDRESSES;
+        
+        let ret = GetAdaptersAddresses(
+            AF_UNSPEC as u32,
+            GAA_FLAG_INCLUDE_PREFIX,
+            std::ptr::null_mut(),
+            adapter_addresses,
+            &mut buffer_size,
+        );
+        
+        if ret != 0 {
+            return None;
+        }
+        
+        let mut current = adapter_addresses;
+        while !current.is_null() {
+            let adapter = &*current;
+            
+            // Get adapter name
+            let name_ptr = adapter.AdapterName;
+            let name = if !name_ptr.is_null() {
+                std::ffi::CStr::from_ptr(name_ptr)
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                String::new()
+            };
+            
+            // Get friendly name
+            let friendly_name = if !adapter.FriendlyName.is_null() {
+                let len = (0..).take_while(|&i| *adapter.FriendlyName.add(i) != 0).count();
+                let slice = std::slice::from_raw_parts(adapter.FriendlyName, len);
+                String::from_utf16_lossy(slice)
+            } else {
+                name.clone()
+            };
+            
+            // Iterate through unicast addresses
+            let mut unicast = adapter.FirstUnicastAddress;
+            while !unicast.is_null() {
+                let addr = &*unicast;
+                if !addr.Address.lpSockaddr.is_null() {
+                    let sockaddr = &*(addr.Address.lpSockaddr as *const SOCKADDR_IN);
+                    if sockaddr.sin_family == winapi::shared::ws2def::AF_INET as u16 {
+                        let ip_bytes = sockaddr.sin_addr.S_un.S_addr().to_ne_bytes();
+                        let ip = IpAddr::V4(std::net::Ipv4Addr::new(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]));
+                        result.push((friendly_name.clone(), ip));
+                    }
+                }
+                unicast = addr.Next;
+            }
+            
+            current = adapter.Next;
+        }
+    }
+    
+    Some(result)
+}
+
+#[cfg(target_os = "macos")]
+fn get_network_interfaces_macos() -> Option<Vec<(String, std::net::IpAddr)>> {
+    use std::net::IpAddr;
+    
+    let mut result = Vec::new();
+    
+    unsafe {
+        let mut ifap: *mut libc::ifaddrs = std::ptr::null_mut();
+        
+        if libc::getifaddrs(&mut ifap) != 0 {
+            return None;
+        }
+        
+        let mut ifa = ifap;
+        while !ifa.is_null() {
+            let ifa_ref = &*ifa;
+            
+            if !ifa_ref.ifa_addr.is_null() {
+                let addr = &*ifa_ref.ifa_addr;
+                
+                if addr.sa_family as i32 == libc::AF_INET {
+                    let sin = &*(ifa_ref.ifa_addr as *const libc::sockaddr_in);
+                    let ip_bytes = sin.sin_addr.s_addr.to_ne_bytes();
+                    let ip = IpAddr::V4(std::net::Ipv4Addr::new(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]));
+                    
+                    let name = std::ffi::CStr::from_ptr(ifa_ref.ifa_name)
+                        .to_string_lossy()
+                        .to_string();
+                    
+                    result.push((name, ip));
+                }
+            }
+            
+            ifa = ifa_ref.ifa_next;
+        }
+        
+        libc::freeifaddrs(ifap);
+    }
+    
+    Some(result)
+}
+
+#[cfg(target_os = "linux")]
+fn get_network_interfaces_linux() -> Option<Vec<(String, std::net::IpAddr)>> {
+    // Same implementation as macos for Linux
+    get_network_interfaces_macos()
 }
 
 fn get_computer_name() -> String {
@@ -205,7 +426,10 @@ async fn run_udp_server(port: u16) {
                     }
                 }
             }
-            KeyboardEvent::MouseMove(x, y)            => { driver_manager.send_mouse_move(*x, *y); }
+            KeyboardEvent::MouseMove(x, y)            => { 
+                println!("[Main] MouseMove: x={}, y={}", x, y);
+                driver_manager.send_mouse_move(*x, *y); 
+            }
             KeyboardEvent::MouseButton(mask, pressed)  => { driver_manager.send_mouse_button(*mask, *pressed); }
             KeyboardEvent::MouseScroll(delta)           => { driver_manager.send_mouse_scroll(*delta); }
             KeyboardEvent::ResetState => {

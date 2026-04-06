@@ -146,6 +146,12 @@ pub struct DriverManager {
     /// Bitmask of currently held modifier flags (Shift, Ctrl, Alt, Cmd).
     /// Updated on every modifier KeyDown/KeyUp so regular keys get the right flags.
     held_modifier_flags: Cell<u64>,
+    /// Mouse movement remainder for sub-pixel precision
+    remain_x: Cell<f64>,
+    remain_y: Cell<f64>,
+    /// Current mouse button state (Bit 0: Left, Bit 1: Right, Bit 2: Middle)
+    /// This is used to maintain button state during drag operations
+    mouse_button_state: Cell<u8>,
 }
 
 #[cfg(target_os = "macos")]
@@ -155,6 +161,9 @@ impl DriverManager {
             initialized: false,
             caps_lock_on: Cell::new(false),
             held_modifier_flags: Cell::new(0),
+            remain_x: Cell::new(0.0),
+            remain_y: Cell::new(0.0),
+            mouse_button_state: Cell::new(0),
         }
     }
 
@@ -186,10 +195,16 @@ impl DriverManager {
     }
 
     pub fn initialize(&mut self) -> bool {
+        if !is_accessibility_trusted() {
+            println!("ERROR: Accessibility permission not granted!");
+            println!("ACTION REQUIRED: System Settings → Privacy & Security → Accessibility");
+            println!("Add this binary to the Accessibility list, then restart the application.");
+            request_accessibility_if_needed();
+            return false;
+        }
         self.initialized = true;
         println!("Driver manager initialized (macOS CoreGraphics)");
-        println!("ACTION REQUIRED: System Settings → Privacy & Security → Accessibility");
-        println!("Add this binary to the Accessibility list, or keyboard injection will be silently blocked.");
+        println!("Accessibility permission: GRANTED");
         true
     }
 
@@ -286,27 +301,113 @@ impl DriverManager {
         false
     }
 
-    pub fn send_mouse_move(&self, dx: i32, dy: i32) -> bool {
-        if !self.initialized { return false; }
-        let scaled_x = (dx * 10) as f64;
-        let scaled_y = (dy * 10) as f64;
+    pub fn send_mouse_move(&self, dx: f64, dy: f64) -> bool {
+        if !self.initialized { 
+            println!("[Driver] send_mouse_move: not initialized");
+            return false; 
+        }
+
+        println!("[Driver] send_mouse_move: dx={}, dy={}", dx, dy);
+
+        // --- 核心逻辑：余数累加 (确保低速不丢帧) ---
+        let total_x = dx + self.remain_x.get();
+        let total_y = dy + self.remain_y.get();
+
+        // 整数部分用于标准 API，小数部分留给下一帧
+        let move_x = total_x.trunc();
+        let move_y = total_y.trunc();
+        
+        self.remain_x.set(total_x - move_x);
+        self.remain_y.set(total_y - move_y);
+
+        println!("[Driver] move_x={}, move_y={}, remain_x={}, remain_y={}", move_x, move_y, self.remain_x.get(), self.remain_y.get());
+
+        // 如果连 1 像素都没凑够，且不是 macOS (macOS支持浮点)，则跳过
+        #[cfg(target_os = "windows")]
+        if move_x as i32 == 0 && move_y as i32 == 0 {
+            println!("[Driver] Skipping small move");
+            return true;
+        }
+
+        #[cfg(target_os = "macos")]
+        return self.execute_move(total_x, total_y, move_x as i64, move_y as i64);
+        
+        #[cfg(target_os = "windows")]
+        return self.execute_move_windows(move_x as i32, move_y as i32);
+    }
+
+    // --- macOS 实现 ---
+    #[cfg(target_os = "macos")]
+    fn execute_move(&self, raw_x: f64, raw_y: f64, int_x: i64, int_y: i64) -> bool {
+        use core_graphics::geometry::CGPoint;
+
+        println!("[Driver] execute_move: raw_x={}, raw_y={}, int_x={}, int_y={}, button_state={:02X}",
+                 raw_x, raw_y, int_x, int_y, self.mouse_button_state.get());
+
         let cur = cursor_position();
-        let new_pos = CGPoint::new(cur.x + scaled_x, cur.y + scaled_y);
-        if let Some(src) = Self::make_source() {
-            if let Ok(ev) = CGEvent::new_mouse_event(
-                src, CGEventType::MouseMoved, new_pos, CGMouseButton::Left,
-            ) {
-                ev.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, dx as i64);
-                ev.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_Y, dy as i64);
-                ev.post(CGEventTapLocation::HID);
-                return true;
+        println!("[Driver] Current cursor position: {:?}", cur);
+
+        // 计算新位置
+        let new_x = cur.x + int_x as f64;
+        let new_y = cur.y + int_y as f64;
+        println!("[Driver] Target position: x={}, y={}", new_x, new_y);
+
+        let button_state = self.mouse_button_state.get();
+        let point = CGPoint::new(new_x, new_y);
+
+        // If any button is pressed, use CGEvent to send mouse move with button state
+        // This is necessary for drag operations to work correctly
+        if button_state != 0 {
+            // Determine the appropriate mouse button for the event
+            let btn = if button_state & 0x01 != 0 {
+                CGMouseButton::Left
+            } else if button_state & 0x02 != 0 {
+                CGMouseButton::Right
+            } else {
+                CGMouseButton::Center
+            };
+
+            // Create a mouse moved event with the button held
+            // This is the key to making drag operations work
+            if let Some(src) = Self::make_source() {
+                // Use LeftMouseDragged if left button is held, otherwise use MouseMoved
+                let ev_type = if button_state & 0x01 != 0 {
+                    CGEventType::LeftMouseDragged
+                } else if button_state & 0x02 != 0 {
+                    CGEventType::RightMouseDragged
+                } else {
+                    CGEventType::MouseMoved
+                };
+
+                if let Ok(ev) = CGEvent::new_mouse_event(src, ev_type, point, btn) {
+                    ev.post(CGEventTapLocation::HID);
+                    println!("[Driver] CGEvent mouse drag posted: type={:?}, button={:?}", ev_type, btn);
+                    return true;
+                }
             }
         }
-        false
+
+        // If no button is pressed, use CGWarpMouseCursorPosition for simple movement
+        // This is more efficient for regular mouse movement
+        unsafe { core_graphics::display::CGWarpMouseCursorPosition(point); }
+        println!("[Driver] CGWarpMouseCursorPosition called");
+
+        true
     }
 
     pub fn send_mouse_button(&self, button_mask: u8, pressed: bool) -> bool {
         if !self.initialized { return false; }
+
+        // Update internal button state tracking (like HID report Byte 0)
+        let current_state = self.mouse_button_state.get();
+        let new_state = if pressed {
+            current_state | button_mask
+        } else {
+            current_state & !button_mask
+        };
+        self.mouse_button_state.set(new_state);
+        println!("[Driver] Button state updated: mask={:02X}, pressed={}, state={:02X}", button_mask, pressed, new_state);
+
         let (ev_type, btn) = if pressed {
             if button_mask & 0x01 != 0 { (CGEventType::LeftMouseDown,  CGMouseButton::Left)   }
             else if button_mask & 0x02 != 0 { (CGEventType::RightMouseDown, CGMouseButton::Right)  }
@@ -331,8 +432,50 @@ impl DriverManager {
         false
     }
 
-    /// Send the second click of a double-click sequence.
-    /// macOS requires clickState=2; without it the OS treats each click as independent.
+    // --- Windows 实现 ---
+    #[cfg(target_os = "windows")]
+    fn execute_move_windows(&self, dx: i32, dy: i32) -> bool {
+        println!("[Driver] execute_move_windows: dx={}, dy={}, button_state={:02X}", dx, dy, self.mouse_button_state);
+
+        // Build mouse event flags
+        // Similar to HID report: when buttons are pressed, we need to include them in move events
+        // for drag operations to work correctly
+        let mut flags = MOUSEEVENTF_MOVE;
+
+        // If left button is held (Bit 0), include LEFTDOWN flag
+        if self.mouse_button_state & 0x01 != 0 {
+            flags |= MOUSEEVENTF_LEFTDOWN;
+        }
+        // If right button is held (Bit 1), include RIGHTDOWN flag
+        if self.mouse_button_state & 0x02 != 0 {
+            flags |= MOUSEEVENTF_RIGHTDOWN;
+        }
+        // If middle button is held (Bit 2), include MIDDLEDOWN flag
+        if self.mouse_button_state & 0x04 != 0 {
+            flags |= MOUSEEVENTF_MIDDLEDOWN;
+        }
+
+        let input = INPUT {
+            type_: INPUT_MOUSE,
+            union_: INPUT_UNION {
+                mi: ManuallyDrop::new(MOUSEINPUT {
+                    dx: dx,
+                    dy: dy,
+                    mouseData: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: std::ptr::null_mut(),
+                }),
+            },
+        };
+        let result = unsafe { SendInput(1, &input, size_of::<INPUT>() as c_int) > 0 };
+        println!("[Driver] SendInput result: {}, flags={:08X}", result, flags);
+        result
+    }
+
+    /// Send a complete double-click sequence.
+    /// macOS requires clickState=1 for first click, clickState=2 for second click.
+    /// Timing: press(50ms) -> release(50ms) -> press(50ms) -> release
     pub fn send_mouse_double_click(&self, button_mask: u8) -> bool {
         if !self.initialized { return false; }
         let (down_type, up_type, btn) = if button_mask & 0x01 != 0 {
@@ -343,12 +486,33 @@ impl DriverManager {
             return false;
         };
         let pos = cursor_position();
+        
+        // First click with clickState=1: press -> hold 50ms -> release
+        if let Some(src) = Self::make_source() {
+            if let Ok(ev) = CGEvent::new_mouse_event(src, down_type, pos, btn) {
+                ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
+                ev.post(CGEventTapLocation::HID);
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        if let Some(src) = Self::make_source() {
+            if let Ok(ev) = CGEvent::new_mouse_event(src, up_type, pos, btn) {
+                ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
+                ev.post(CGEventTapLocation::HID);
+            }
+        }
+        
+        // Interval between clicks: 50ms
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        
+        // Second click with clickState=2: press -> hold 50ms -> release
         if let Some(src) = Self::make_source() {
             if let Ok(ev) = CGEvent::new_mouse_event(src, down_type, pos, btn) {
                 ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 2);
                 ev.post(CGEventTapLocation::HID);
             }
         }
+        std::thread::sleep(std::time::Duration::from_millis(50));
         if let Some(src) = Self::make_source() {
             if let Ok(ev) = CGEvent::new_mouse_event(src, up_type, pos, btn) {
                 ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 2);
@@ -404,7 +568,7 @@ impl DriverManager {
     pub fn send_key_press(&self, _: u8) -> bool { false }
     pub fn send_key_release(&self, _: u8) -> bool { false }
     pub fn send_key_combo(&self, _: &[u8]) -> bool { false }
-    pub fn send_mouse_move(&self, _: i32, _: i32) -> bool { false }
+    pub fn send_mouse_move(&self, _: f64, _: f64) -> bool { false }
     pub fn send_mouse_button(&self, _: u8, _: bool) -> bool { false }
     pub fn send_mouse_scroll(&self, _: i32) -> bool { false }
     pub fn send_mouse_double_click(&self, _: u8) -> bool { false }
@@ -418,9 +582,11 @@ use std::ffi::{c_int, c_void};
 #[cfg(target_os = "windows")]
 use std::mem::{size_of, ManuallyDrop};
 #[cfg(target_os = "windows")]
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 #[cfg(target_os = "windows")]
 use std::os::raw::c_ulong;
+#[cfg(target_os = "windows")]
+use std::cell::Cell;
 #[cfg(target_os = "windows")]
 use crate::scancode::hid_to_vk;
 
@@ -555,12 +721,25 @@ pub struct DriverManager {
     initialized: bool,
     instance_mutex: HANDLE,
     registered: bool,
+    /// Mouse movement remainder for sub-pixel precision
+    remain_x: Cell<f64>,
+    remain_y: Cell<f64>,
+    /// Current mouse button state (Bit 0: Left, Bit 1: Right, Bit 2: Middle)
+    /// This is used to maintain button state during drag operations
+    mouse_button_state: Cell<u8>,
 }
 
 #[cfg(target_os = "windows")]
 impl DriverManager {
     pub fn new() -> Self {
-        Self { initialized: false, instance_mutex: null_mut(), registered: false }
+        Self {
+            initialized: false,
+            instance_mutex: null_mut(),
+            registered: false,
+            remain_x: Cell::new(0.0),
+            remain_y: Cell::new(0.0),
+            mouse_button_state: Cell::new(0),
+        }
     }
 
     pub fn initialize(&mut self) -> bool {
@@ -688,21 +867,19 @@ impl DriverManager {
         true
     }
 
-    pub fn send_mouse_move(&self, x: i32, y: i32) -> bool {
-        if !self.initialized { return false; }
-        let scaled_x = x * 10;
-        let scaled_y = y * 10;
-        let input = INPUT {
-            type_: INPUT_MOUSE,
-            union_: INPUT_UNION {
-                mi: ManuallyDrop::new(MOUSEINPUT { dx: scaled_x, dy: scaled_y, mouseData: 0, dwFlags: MOUSEEVENTF_MOVE, time: 0, dwExtraInfo: std::ptr::null_mut() }),
-            },
-        };
-        unsafe { SendInput(1, &input, size_of::<INPUT>() as c_int) > 0 }
-    }
-
     pub fn send_mouse_button(&self, button_mask: u8, pressed: bool) -> bool {
         if !self.initialized { return false; }
+
+        // Update internal button state tracking (like HID report Byte 0)
+        let current_state = self.mouse_button_state.get();
+        let new_state = if pressed {
+            current_state | button_mask
+        } else {
+            current_state & !button_mask
+        };
+        self.mouse_button_state.set(new_state);
+        println!("[Driver] Button state updated: mask={:02X}, pressed={}, state={:02X}", button_mask, pressed, new_state);
+
         let flags = if pressed {
             if button_mask & 0x01 != 0 { MOUSEEVENTF_LEFTDOWN }
             else if button_mask & 0x02 != 0 { MOUSEEVENTF_RIGHTDOWN }
@@ -734,14 +911,80 @@ impl DriverManager {
         unsafe { SendInput(1, &input, size_of::<INPUT>() as c_int) > 0 }
     }
 
-    /// Send the second click of a double-click sequence.
+    pub fn send_mouse_move(&self, dx: f64, dy: f64) -> bool {
+        if !self.initialized { 
+            println!("[Driver] send_mouse_move: not initialized");
+            return false; 
+        }
+
+        println!("[Driver] send_mouse_move: dx={}, dy={}", dx, dy);
+
+        // --- Core logic: remainder accumulation (ensure low speed doesn't lose frames) ---
+        let total_x = dx + self.remain_x.get();
+        let total_y = dy + self.remain_y.get();
+
+        // Integer part for standard API, decimal part for next frame
+        let move_x = total_x.trunc();
+        let move_y = total_y.trunc();
+        
+        self.remain_x.set(total_x - move_x);
+        self.remain_y.set(total_y - move_y);
+
+        println!("[Driver] move_x={}, move_y={}, remain_x={}, remain_y={}", move_x, move_y, self.remain_x.get(), self.remain_y.get());
+
+        // Skip if less than 1 pixel
+        if move_x as i32 == 0 && move_y as i32 == 0 {
+            println!("[Driver] Skipping small move");
+            return true;
+        }
+
+        // Execute Windows mouse move
+        self.execute_move_windows(move_x as i32, move_y as i32)
+    }
+
+    fn execute_move_windows(&self, dx: i32, dy: i32) -> bool {
+        println!("[Driver] execute_move_windows: dx={}, dy={}", dx, dy);
+        
+        let input = INPUT {
+            type_: INPUT_MOUSE,
+            union_: INPUT_UNION {
+                mi: ManuallyDrop::new(MOUSEINPUT { 
+                    dx: dx as c_int, 
+                    dy: dy as c_int, 
+                    mouseData: 0, 
+                    dwFlags: MOUSEEVENTF_MOVE, 
+                    time: 0, 
+                    dwExtraInfo: std::ptr::null_mut() 
+                }),
+            },
+        };
+        unsafe { SendInput(1, &input, size_of::<INPUT>() as c_int) > 0 }
+    }
+
+    /// Send a double-click sequence.
     /// Windows USER32 auto-generates WM_LBUTTONDBLCLK when two clicks arrive
     /// within the system double-click interval at the same cursor position.
+    /// Timing: press(50ms) -> release(50ms) -> press(50ms) -> release
+    /// Total time: ~150ms, well within the system double-click time (500ms)
     pub fn send_mouse_double_click(&self, button_mask: u8) -> bool {
+        if !self.initialized { return false; }
+        
+        // First click: press -> hold 50ms -> release
         self.send_mouse_button(button_mask, true);
+        std::thread::sleep(std::time::Duration::from_millis(50));
         self.send_mouse_button(button_mask, false);
+        
+        // Interval between clicks: 50ms
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        
+        // Second click: press -> hold 50ms -> release
+        self.send_mouse_button(button_mask, true);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        self.send_mouse_button(button_mask, false);
+        
         true
     }
+    
 }
 
 #[cfg(target_os = "windows")]
